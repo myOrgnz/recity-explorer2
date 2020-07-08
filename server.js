@@ -28,7 +28,8 @@ function notFound(req, res) {
 
 const locationKey = process.env.LOCATION_KEY;
 const weatherKey = process.env.WEATHER_KEY;
-const trailsKey = process.env.TRAIL_KEY
+const trailsKey = process.env.TRAIL_KEY;
+const moviesKey = process.env.MOVIES_KEY
 
 //////////////////////Location///////////////
 
@@ -43,7 +44,11 @@ function getLocation(city) {
     let values = [city];
 
     return client.query(SQL, values).then(results => {
+        // console.log('qqqqqqqqqq', results);
         if (results.rowCount) {
+            locationArr.push(results.rows[0])
+                // console.log('qqqqqqq', locationArr);
+
             return results.rows[0];
         } else {
             let url = `https://eu1.locationiq.com/v1/search.php?key=${locationKey}&q=${city}&format=json`;
@@ -53,9 +58,9 @@ function getLocation(city) {
 
         }
     })
+
 }
 
-let allLocations = {};
 
 
 function whatLocation(city, data) {
@@ -64,8 +69,9 @@ function whatLocation(city, data) {
     let SQL = 'INSERT INTO locations (search_query, formatted_query, latitude, longitude) VALUES ($1, $2, $3, $4) RETURNING *'
     let values = [city, location.formatted_query, location.latitude, location.longitude];
     return client.query(SQL, values).then(results => {
+        console.log('wwwwwwwwwwww', results);
         const savedLocation = results.rows[0];
-        allLocations[city] = savedLocation;
+        console.log('ddddddddd', results.rows[0]);
         return savedLocation
     })
 }
@@ -78,6 +84,8 @@ function Location(city, data) {
     this.latitude = data.body[0].lat;
     this.longitude = data.body[0].lon;
     locationArr.push(this)
+
+
 }
 
 //////////////////////////////////Weather/////////////////////////
@@ -105,6 +113,7 @@ function Weather(data) {
 }
 //////////////////////////////////trials/////////////////////////
 
+
 function trialsHandler(req, res) {
     getTrials().then(trailsData => {
         return res.status(200).json(trailsData)
@@ -121,8 +130,6 @@ function getTrials() {
     })
 }
 
-
-
 function Trials(data) {
     this.name = data.name;
     this.location = data.location;
@@ -136,15 +143,79 @@ function Trials(data) {
 
 }
 
+
+
+//////////////////////////////////movies/////////////////////////
+
+
+function moviesHandler(req, res) {
+    getMovies().then(moviesData => {
+        return res.status(200).json(moviesData)
+    })
+}
+
+function getMovies() {
+    const url = `https://api.themoviedb.org/3/search/movie?api_key=${moviesKey}&query=${locationArr[0].search_query}`
+    return superagent.get(url).then(item => {
+        return item.body.results.map(newItem => {
+            // console.log('qqqqqqqq', newItem);
+            return new Movies(newItem)
+        })
+    })
+
+}
+
+function Movies(data) {
+    this.title = data.title;
+    this.overview = data.overview;
+    this.average_votes = data.vote_average;
+    this.total_votes = data.vote_count;
+    this.image_url = data.poster_path;
+    this.popularity = data.popularity;
+    this.released_on = data.release_date;
+}
+
+//////////////////////////////////yelp/////////////////////////
+
+
+function yelpHandler(req, res) {
+    getYelp().then(moviesData => {
+        return res.status(200).json(moviesData)
+    })
+}
+
+function getYelp() {
+    // const url = `https://api.yelp.com/v3/businesses/search&search_query=${locationArr[0].search_query}`
+    // console.log(url);
+
+    return superagent.get(url).then(item => {
+        console.log('qqqqqqqq', newItem);
+        return item.body.results.map(newItem => {
+            return new Yelp(newItem)
+        })
+    })
+
+}
+
+function Yelp(data) {
+    // this.title = data.title;
+    // this.overview = data.overview;
+    // this.average_votes = data.vote_average;
+    // this.total_votes = data.vote_count;
+    // this.image_url = data.poster_path;
+    // this.popularity = data.popularity;
+    // this.released_on = data.release_date;
+}
+
+
 app.get('/location', locationHandler)
 app.get('/weather', weatherHandler)
-app.get('/trials', trialsHandler)
-
+app.get('/movies', moviesHandler)
+app.get('/trails', trialsHandler)
+app.get('/yelp', yelpHandler)
 app.get('/', proofOfLife)
 app.get('*', notFound)
 app.use(errorHandler)
-
-// console.log('wwwwwwwwwwww', client.connect());
 
 client.connect().then(() =>
         app.listen(PORT, () => {
