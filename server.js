@@ -3,12 +3,14 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const superagent = require('superagent')
+const superagent = require('superagent');
+const pg = require('pg');
 const PORT = process.env.PORT || 3030
 let app = express();
 app.use(cors());
 
-
+const client = new pg.Client(process.env.DATABASE_URL)
+client.on('error', err => console.error(err))
 
 
 function proofOfLife(req, res) {
@@ -31,16 +33,41 @@ const trailsKey = process.env.TRAIL_KEY
 //////////////////////Location///////////////
 
 function locationHandler(req, res) {
-    getLocation(req.query.city).then(locationData => res.status(200).json(locationData))
+    getLocation(req.query.city).then(locationData => {
+        return res.status(200).json(locationData)
+    })
 }
 
 function getLocation(city) {
-    let url = `https://eu1.locationiq.com/v1/search.php?key=${locationKey}&q=${city}&format=json`;
-    return superagent.get(url).then(item => {
-        return new Location(city, item)
+    let SQL = 'select * FROM locations WHERE search_query = $1';
+    let values = [city];
+
+    return client.query(SQL, values).then(results => {
+        if (results.rowCount) {
+            return results.rows[0];
+        } else {
+            let url = `https://eu1.locationiq.com/v1/search.php?key=${locationKey}&q=${city}&format=json`;
+            return superagent.get(url).then(item => {
+                return whatLocation(city, item)
+            })
+
+        }
     })
+}
+
+let allLocations = {};
 
 
+function whatLocation(city, data) {
+
+    const location = new Location(city, data);
+    let SQL = 'INSERT INTO locations (search_query, formatted_query, latitude, longitude) VALUES ($1, $2, $3, $4) RETURNING *'
+    let values = [city, location.formatted_query, location.latitude, location.longitude];
+    return client.query(SQL, values).then(results => {
+        const savedLocation = results.rows[0];
+        allLocations[city] = savedLocation;
+        return savedLocation
+    })
 }
 
 let locationArr = []
@@ -117,8 +144,14 @@ app.get('/', proofOfLife)
 app.get('*', notFound)
 app.use(errorHandler)
 
+// console.log('wwwwwwwwwwww', client.connect());
 
-app.listen(PORT, () => {
-    console.log(`I'm listening to u port ${PORT}`);
+client.connect().then(() =>
+        app.listen(PORT, () => {
+            console.log(`I'm listening to u port ${PORT}`);
+        })
+    )
+    .catch(() => {
+        console.log('error');
 
-})
+    })
