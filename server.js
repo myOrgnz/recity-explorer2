@@ -4,13 +4,11 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const superagent = require('superagent');
-const pg = require('pg');
 const PORT = process.env.PORT || 3030
 let app = express();
 app.use(cors());
 
-const client = new pg.Client(process.env.DATABASE_URL)
-client.on('error', err => console.error(err))
+
 
 
 function proofOfLife(req, res) {
@@ -26,7 +24,6 @@ function notFound(req, res) {
     res.status(500).send(' PAGE NOT FOUND  -_-')
 }
 
-const locationKey = process.env.LOCATION_KEY;
 const weatherKey = process.env.WEATHER_KEY;
 const trailsKey = process.env.TRAIL_KEY;
 const moviesKey = process.env.MOVIES_KEY
@@ -39,54 +36,7 @@ function locationHandler(req, res) {
     })
 }
 
-function getLocation(city) {
-    let SQL = 'select * FROM locations WHERE search_query = $1';
-    let values = [city];
 
-    return client.query(SQL, values).then(results => {
-        // console.log('qqqqqqqqqq', results);
-        if (results.rowCount) {
-            locationArr.push(results.rows[0])
-                // console.log('qqqqqqq', locationArr);
-
-            return results.rows[0];
-        } else {
-            let url = `https://eu1.locationiq.com/v1/search.php?key=${locationKey}&q=${city}&format=json`;
-            return superagent.get(url).then(item => {
-                return whatLocation(city, item)
-            })
-
-        }
-    })
-
-}
-
-
-
-function whatLocation(city, data) {
-
-    const location = new Location(city, data);
-    let SQL = 'INSERT INTO locations (search_query, formatted_query, latitude, longitude) VALUES ($1, $2, $3, $4) RETURNING *'
-    let values = [city, location.formatted_query, location.latitude, location.longitude];
-    return client.query(SQL, values).then(results => {
-        console.log('wwwwwwwwwwww', results);
-        const savedLocation = results.rows[0];
-        console.log('ddddddddd', results.rows[0]);
-        return savedLocation
-    })
-}
-
-let locationArr = []
-
-function Location(city, data) {
-    this.search_query = city;
-    this.formatted_query = data.body[0].display_name;
-    this.latitude = data.body[0].lat;
-    this.longitude = data.body[0].lon;
-    locationArr.push(this)
-
-
-}
 
 //////////////////////////////////Weather/////////////////////////
 
