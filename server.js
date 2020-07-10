@@ -8,7 +8,11 @@ const PORT = process.env.PORT || 3030
 let app = express();
 app.use(cors());
 
+const pg = require('pg');
 
+
+const client = new pg.Client(process.env.DATABASE_URL);
+client.on('error', err => console.error(err));
 
 
 function proofOfLife(req, res) {
@@ -24,9 +28,11 @@ function notFound(req, res) {
     res.status(500).send(' PAGE NOT FOUND  -_-')
 }
 
+const locationKey = process.env.LOCATION_KEY;
 const weatherKey = process.env.WEATHER_KEY;
 const trailsKey = process.env.TRAIL_KEY;
-const moviesKey = process.env.MOVIES_KEY
+const moviesKey = process.env.MOVIES_KEY;
+let yelpKey = process.env.YELP_KEY;
 
 //////////////////////Location///////////////
 
@@ -36,6 +42,48 @@ function locationHandler(req, res) {
     })
 }
 
+
+function getLocation(city) {
+    let SQL = 'select * FROM locations WHERE search_query = $1';
+    let values = [city];
+
+    return client.query(SQL, values).then(results => {
+        if (results.rowCount) {
+            locationArr = []
+            locationArr.push(results.rows[0])
+            return results.rows[0];
+        } else {
+            locationArr = []
+            let url = `https://eu1.locationiq.com/v1/search.php?key=${locationKey}&q=${city}&format=json`;
+            return superagent.get(url).then(item => {
+                return whatLocation(city, item)
+            })
+        }
+    })
+}
+
+
+function whatLocation(city, data) {
+    const location = new Location(city, data);
+    let SQL = 'INSERT INTO locations (search_query, formatted_query, latitude, longitude) VALUES ($1, $2, $3, $4) RETURNING *'
+    let values = [city, location.formatted_query, location.latitude, location.longitude];
+    return client.query(SQL, values).then(results => {
+        const savedLocation = results.rows[0];
+        return savedLocation
+    })
+}
+
+let locationArr = []
+
+function Location(city, data) {
+    this.search_query = city;
+    this.formatted_query = data.body[0].display_name;
+    this.latitude = data.body[0].lat;
+    this.longitude = data.body[0].lon;
+    locationArr.push(this)
+
+
+}
 
 
 //////////////////////////////////Weather/////////////////////////
@@ -108,7 +156,6 @@ function getMovies() {
     const url = `https://api.themoviedb.org/3/search/movie?api_key=${moviesKey}&query=${locationArr[0].search_query}`
     return superagent.get(url).then(item => {
         return item.body.results.map(newItem => {
-            // console.log('qqqqqqqq', newItem);
             return new Movies(newItem)
         })
     })
@@ -120,7 +167,11 @@ function Movies(data) {
     this.overview = data.overview;
     this.average_votes = data.vote_average;
     this.total_votes = data.vote_count;
-    this.image_url = data.poster_path;
+    if (data.poster_path) {
+        this.image_url = `https://image.tmdb.org/t/p/w500${data.poster_path}`;
+    } else(
+        this.image_url = 'https://www.salonlfc.com/en/image-not-found-2/#top_of_page'
+    )
     this.popularity = data.popularity;
     this.released_on = data.release_date;
 }
@@ -134,27 +185,27 @@ function yelpHandler(req, res) {
     })
 }
 
-function getYelp() {
-    // const url = `https://api.yelp.com/v3/businesses/search&search_query=${locationArr[0].search_query}`
-    // console.log(url);
 
-    return superagent.get(url).then(item => {
-        console.log('qqqqqqqq', newItem);
-        return item.body.results.map(newItem => {
-            return new Yelp(newItem)
+getYelp = function() {
+    const url = `https://api.yelp.com/v3/businesses/search?location=${locationArr[0].search_query}`
+    return superagent.get(url)
+        .set('Authorization', `Bearer ${yelpKey}`)
+        .then(data => {
+            let yelpData = data.body.businesses;
+            return yelpData.map(oneYelp => {
+                return new Yelp(oneYelp)
+            })
         })
-    })
 
 }
 
+
 function Yelp(data) {
-    // this.title = data.title;
-    // this.overview = data.overview;
-    // this.average_votes = data.vote_average;
-    // this.total_votes = data.vote_count;
-    // this.image_url = data.poster_path;
-    // this.popularity = data.popularity;
-    // this.released_on = data.release_date;
+    this.name = data.name;
+    this.image_url = data.image_url;
+    this.price = data.price
+    this.rating = data.rating;
+    this.url = data.url;
 }
 
 
